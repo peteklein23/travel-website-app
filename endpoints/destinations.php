@@ -1,6 +1,7 @@
 <?php
 define('DOING_AJAX', true);
 define('SHORTINIT', true);
+define('WP_CACHE', false);
 
 require_once '../wp-load.php';
 
@@ -48,32 +49,6 @@ foreach ($meta as $m) {
 }
 
 
-// get reviews
-$reviewsQuery = "SELECT
-    p.*,
-    pm.meta_value as destination_id
-FROM $wpdb->posts p
-INNER JOIN $wpdb->postmeta pm 
-    ON pm.post_id = p.ID
-    AND pm.meta_key = 'destination'
-    AND pm.meta_value IN ($postIdList)
-WHERE p.post_type = 'review'
-AND p.post_status = 'publish'";
-
-$reviews = $wpdb->get_results($reviewsQuery);
-
-// format reviews into it's own destination ID indexed array for easy insertion into destinations
-$postReviews = [];
-foreach ($reviews as $review) {
-    $postId = $review->destination_id;
-    if (empty($postReviews[$postId])) {
-        $postReviews[$postId] = [];
-    }
-
-    $postReviews[$postId][] = $review;
-}
-
-
 // get featured images
 $featuredImageQuery = "SELECT
     pm1.post_id,
@@ -99,21 +74,24 @@ foreach ($featuredImages as $featuredImage) {
     $meta = maybe_unserialize($featuredImage->attachment_metadata);
     $sizes = $meta['sizes'];
     $file = $meta['file'];
+    $dirname = dirname($file);
 
-    $domain = (!empty($_SERVER['HTTPS']) ? 'https' : 'http') . '://' . $_SERVER['HTTP_HOST'] . '/';
+    $domain = (!empty($_SERVER['HTTPS']) ? 'https' : 'http') . '://' . $_SERVER['HTTP_HOST'];
     $uploadsUrl = $domain . '/wp-content/uploads/';
+    $relativePath = dirname($file);
+    $fullPath = $uploadsUrl . $relativePath . '/';
 
     $formattedSizes = [];
     $formattedSizes['full'] = [
         'height' => $meta['height'],
         'width' => $meta['width'],
-        'file' => $uploadsUrl . $file
+        'file' => $fullPath . basename($file)
     ];
     foreach ($sizes as $sizeLabel => $sizeInfo) {
         $formattedSizes[$sizeLabel] = [
             'height' => $sizeInfo['height'],
             'width' => $sizeInfo['width'],
-            'file' => $sizeInfo['file'],
+            'file' => $fullPath . $sizeInfo['file'],
         ];
     }
     $postFeaturedImages[$postId] = [
@@ -126,18 +104,137 @@ foreach ($featuredImages as $featuredImage) {
 }
 
 
-// add meta keys to results
+// Get taxonomies
+$taxonomies = ['region'];
+$taxonomyList = '"' . join('","', $taxonomies) . '"';
+
+$taxonomyQuery = "SELECT
+    tr.object_id as post_id,
+    tt.term_id,
+    t.name,
+    t.slug,
+    t.term_group,
+    tt.term_taxonomy_id,
+    tt.taxonomy,
+    tt.description,
+    tt.parent,
+    tt.count
+FROM $wpdb->term_relationships tr
+INNER JOIN $wpdb->term_taxonomy AS tt ON tr.term_taxonomy_id = tt.term_taxonomy_id
+INNER JOIN $wpdb->terms AS t ON t.term_id = tt.term_id
+WHERE tt.taxonomy IN ($taxonomyList)
+AND tr.object_id IN ($postIdList)";
+
+$taxonomyTerms = $wpdb->get_results($taxonomyQuery);
+
+$postTaxonomies = [];
+foreach ($taxonomyTerms as $term) {
+    $postId = $term->post_id;
+    if (empty($postTaxonomies[$postId])) {
+        $postTaxonomies[$postId] = [];
+    }
+
+    $taxonomy = $term->taxonomy;
+    if (empty($postTaxonomies[$postId][$taxonomy])) {
+        $postTaxonomies[$postId][$taxonomy] = [];
+    }
+
+    $postTaxonomies[$postId][$taxonomy][] = [
+        'term_id' => $term->term_id,
+        'name' => $term->name,
+        'slug' => $term->slug,
+        'term_group' => $term->term_group,
+        'term_taxonomy_id' => $term->term_taxonomy_id,
+        'taxonomy' => $term->taxonomy,
+        'description' => $term->description,
+        'parent' => $term->parent,
+        'count' => $term->count
+    ];
+}
+
+
+// get reviews
+$reviewsQuery = "SELECT
+    p.*
+FROM $wpdb->posts p
+INNER JOIN $wpdb->postmeta pm 
+    ON pm.post_id = p.ID
+    AND pm.meta_key = 'destination'
+    AND pm.meta_value IN ($postIdList)
+WHERE p.post_type = 'review'
+AND p.post_status = 'publish'";
+
+$reviews = $wpdb->get_results($reviewsQuery);
+
+$reviewIds = array_column($reviews, 'ID');
+$reviewIdList = join(',', $reviewIds);
+
+// get meta for reviews
+$reviewMetaKeys = [
+    'rating',
+    'destination'
+];
+$reviewMetaList = '"' . join('","', $reviewMetaKeys) . '"';
+
+$reviewMetaQuery = "SELECT
+    *
+FROM $wpdb->postmeta
+WHERE post_id IN ($reviewIdList)
+AND meta_key IN ($reviewMetaList)";
+
+$reviewMetaResults = $wpdb->get_results($reviewMetaQuery);
+
+$reviewMeta = [];
+foreach ($reviewMetaResults as $m) {
+    $postId = $m->post_id;
+    $key = $m->meta_key;
+    if (empty($reviewMeta[$postId])) {
+        $reviewMeta[$postId] = [];
+    }
+
+    $reviewMeta[$postId][$key] = $m->meta_value;
+}
+
+
+// combine reviews into complete review results
+$formattedReviews = [];
+foreach ($reviews as $review) {
+    $postId = $review->ID;
+    $meta = !empty($reviewMeta[$postId]) ? $reviewMeta[$postId] : [];
+
+    $formattedReviews[] = [
+        'post' => $review,
+        'meta' => $meta
+    ];
+}
+
+
+// index reviews by destination ID
+$postReviews = [];
+foreach ($formattedReviews as $review) {
+    $postId = $review['meta']['destination'];
+    if (empty($postReviews[$postId])) {
+        $postReviews[$postId] = [];
+    }
+
+    $postReviews[$postId][] = $review;
+}
+
+
+// combine destinations into complete results
 $formattedPosts = [];
 foreach ($posts as $post) {
     $postId = $post->ID;
     $featuredImage = !empty($postFeaturedImages[$postId]) ? $postFeaturedImages[$postId] : [];
     $meta = !empty($postMeta[$postId]) ? $postMeta[$postId] : [];
+    $taxonomies = !empty($postTaxonomies[$postId]) ? $postTaxonomies[$postId] : [];
     $reviews = !empty($postReviews[$postId]) ? $postReviews[$postId] : [];
 
     $formattedPosts[] = [
         'post' => $post,
         'featured_image' => $featuredImage,
         'meta' => $meta,
+        'taxonomies' => $taxonomies,
         'reviews' => $reviews
     ];
 }
