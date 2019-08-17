@@ -1,0 +1,25 @@
+{
+  "name": "peteklein/travel-review-app",
+  "authors": [
+    {
+      "name": "Pete Klein",
+      "email": "peteklein23@gmail.com"
+    }
+  ],
+  "repositories": [
+    {
+      "type": "composer",
+      "url": "https://wpackagist.org"
+    },
+    {
+      "type": "vcs",
+      "url": "https://github.com/peteklein23/wp-post-collection"
+    }
+  ],
+  "require": {
+    "wpackagist-plugin/advanced-custom-fields": "5.8.2",
+    "wpackagist-plugin/query-monitor": "3.3.7",
+    "wpackagist-plugin/jwt-authentication-for-wp-rest-api": "1.2.6",
+    "peteklein23/wp-post-collection": "dev-master"
+  }
+}

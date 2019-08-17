@@ -1,0 +1,63 @@
+# Ignore everything
+/*
+
+# Allow README
+!README.md
+
+
+# Allow wp-config-example.php
+!wp-config-example.php
+
+
+# Ignore Environment variables
+.env
+.env.*
+*.env
+
+# But Allow Examples
+!.env.example
+
+
+# Allow Git Ignore
+!.gitignore
+
+
+# Allow Composer Files
+!composer.json
+!composer.lock
+
+
+# Allow Yarn and Node Files
+!package.json
+!package-lock.json
+!yarn.lock
+
+
+# Custom Endpoints
+!endpoints
+
+
+# Content
+!wp-content/
+wp-content/*
+
+
+# Ignore All Plugins by Default
+!wp-content/plugins
+wp-content/plugins/*
+
+# Whitelist Plugins
+
+
+# Ignore All Must Use Plugins by Default
+!wp-content/mu-plugins
+wp-content/mu-plugins/*
+# Whitelist Must Use Plugins
+
+
+# Ignore All Themes by Default
+!wp-content/themes
+wp-content/themes/*
+
+# Whitelist themes 
+!wp-content/themes/travel-review-app
