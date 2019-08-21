@@ -14,11 +14,16 @@ WHERE post_type = 'destination'
 AND post_status = 'publish'";
 
 $posts = $wpdb->get_results($postQuery);
-$postIds = array_column($posts, 'ID');
+
+// get the post IDs
+$postIds = array_column($posts, 'ID'); // array_column works on both arrays and objects
+// if no posts, bail early
 if (empty($postIds)) {
     wp_send_json([]);
     exit;
 }
+
+// create a list to pass to MySQL IN() operator for meta and taxonomies
 $postIdList = join(',', $postIds);
 
 
@@ -27,8 +32,10 @@ $metaKeys = [
     'our_rating',
     'hotel_link'
 ];
+// create a list to pass to MySQL IN() operator
 $metaKeyList = '"' . join('","', $metaKeys) . '"';
 
+// get meta for destinations we retrieved
 $metaQuery = "SELECT
     *
 FROM $wpdb->postmeta
@@ -37,6 +44,7 @@ AND meta_key IN ($metaKeyList)";
 
 $meta = $wpdb->get_results($metaQuery);
 
+// index post meta by destination ID for easy assembly later
 $postMeta = [];
 foreach ($meta as $m) {
     $postId = $m->post_id;
@@ -49,7 +57,7 @@ foreach ($meta as $m) {
 }
 
 
-// get featured images
+// get featured images for destinations
 $featuredImageQuery = "SELECT
     pm1.post_id,
     pm1.meta_value AS attachment_id,
@@ -67,6 +75,7 @@ AND pm1.meta_key = '_thumbnail_id'";
 
 $featuredImages = $wpdb->get_results($featuredImageQuery);
 
+// assemble a usable featured image from query results
 $postFeaturedImages = [];
 foreach ($featuredImages as $featuredImage) {
     $postId = $featuredImage->post_id;
@@ -94,6 +103,8 @@ foreach ($featuredImages as $featuredImage) {
             'file' => $fullPath . $sizeInfo['file'],
         ];
     }
+
+    // index by destination id for easy assembly later
     $postFeaturedImages[$postId] = [
         'alt' => $featuredImage->alt,
         'description' => $featuredImage->description,
@@ -106,6 +117,7 @@ foreach ($featuredImages as $featuredImage) {
 
 // Get taxonomies
 $taxonomies = ['region'];
+// create a list to pass to MySQL IN() operator
 $taxonomyList = '"' . join('","', $taxonomies) . '"';
 
 $taxonomyQuery = "SELECT
@@ -139,6 +151,7 @@ foreach ($taxonomyTerms as $term) {
         $postTaxonomies[$postId][$taxonomy] = [];
     }
 
+    // index by destination ID for easy assembly later
     $postTaxonomies[$postId][$taxonomy][] = [
         'term_id' => $term->term_id,
         'name' => $term->name,
@@ -167,6 +180,7 @@ AND p.post_status = 'publish'";
 $reviews = $wpdb->get_results($reviewsQuery);
 
 $reviewIds = array_column($reviews, 'ID');
+// create a list to pass to MySQL IN() operator
 $reviewIdList = join(',', $reviewIds);
 
 // get meta for reviews
@@ -174,6 +188,7 @@ $reviewMetaKeys = [
     'rating',
     'destination'
 ];
+// create a list to pass to MySQL IN() operator
 $reviewMetaList = '"' . join('","', $reviewMetaKeys) . '"';
 
 $reviewMetaQuery = "SELECT
@@ -192,14 +207,16 @@ foreach ($reviewMetaResults as $m) {
         $reviewMeta[$postId] = [];
     }
 
+    // index by review ID for easy assembly later
     $reviewMeta[$postId][$key] = $m->meta_value;
 }
 
 
-// combine reviews into complete review results
+// insert review meta into the review object
 $formattedReviews = [];
 foreach ($reviews as $review) {
     $postId = $review->ID;
+    // use the review ID index we set earlier
     $meta = !empty($reviewMeta[$postId]) ? $reviewMeta[$postId] : [];
 
     $formattedReviews[] = [
@@ -209,7 +226,7 @@ foreach ($reviews as $review) {
 }
 
 
-// index reviews by destination ID
+// index reviews by destination ID for easy assembly later
 $postReviews = [];
 foreach ($formattedReviews as $review) {
     $postId = $review['meta']['destination'];
@@ -221,7 +238,7 @@ foreach ($formattedReviews as $review) {
 }
 
 
-// combine destinations into complete results
+// combine destinations into complete results by using indexed arrays
 $formattedPosts = [];
 foreach ($posts as $post) {
     $postId = $post->ID;
@@ -239,5 +256,6 @@ foreach ($posts as $post) {
     ];
 }
 
+// send the results
 wp_send_json($formattedPosts);
 exit;
